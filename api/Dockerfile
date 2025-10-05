@@ -11,7 +11,7 @@ FROM eclipse-temurin:21-jre-alpine
 
 COPY --from=build /app/target/*.jar app.jar
 
-RUN apk add --no-cache tzdata
+RUN apk add --no-cache tzdata curl
 
 EXPOSE 8080
 
