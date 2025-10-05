@@ -1,0 +1,57 @@
+networks:
+  app-net:
+    driver: bridge
+
+services:
+  db:
+    container_name: hazelcast-poc-db
+    image: mariadb:11.6
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${MARIADB_DATABASE}
+      MARIADB_USER: ${MARIADB_USER}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    networks:
+      - app-net
+    volumes:
+      - db-data:/var/lib/mysql
+    restart: always
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    container_name: hazelcast-poc-api
+    build:
+      context: ./api
+    image: alexdevvv/portfolio-api:latest
+    networks:
+      - app-net
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mariadb://db:3306/${MARIADB_DATABASE}
+      SPRING_DATASOURCE_USERNAME: ${MARIADB_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MARIADB_PASSWORD}
+    restart: always
+
+  web:
+    container_name: hazelcast-poc-web
+    build:
+      context: ./web
+    image: alexdevvv/hazelcast-poc-web:latest
+    ports:
+      - "${APP_PORT:-3000}:80"
+    networks:
+      - app-net
+    depends_on:
+      - api 
+    restart: always
+
+volumes:
+  db-data:
