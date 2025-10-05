@@ -11,8 +11,6 @@ services:
       MARIADB_DATABASE: ${MARIADB_DATABASE}
       MARIADB_USER: ${MARIADB_USER}
       MARIADB_PASSWORD: ${MARIADB_PASSWORD}
-    ports:
-      - "${DB_PORT:-3306}:3306"
     networks:
       - app-net
     volumes:
@@ -38,6 +36,12 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mariadb://db:3306/${MARIADB_DATABASE}
       SPRING_DATASOURCE_USERNAME: ${MARIADB_USER}
       SPRING_DATASOURCE_PASSWORD: ${MARIADB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     restart: always
 
   web:
@@ -50,7 +54,8 @@ services:
     networks:
       - app-net
     depends_on:
-      - api 
+      api:
+        condition: service_healthy
     restart: always
 
 volumes:
