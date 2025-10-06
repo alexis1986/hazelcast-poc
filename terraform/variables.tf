@@ -9,6 +9,7 @@ variable "ssh_key_id" {
   type        = string
 }
 
+
 variable "region" {
   description = "Droplet region"
   type        = string

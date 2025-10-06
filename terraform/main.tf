@@ -9,6 +9,13 @@ resource "digitalocean_droplet" "hazelcast_poc" {
   tags = ["hazelcast-poc"]
 
   user_data = file("${path.module}/cloud-init.sh")
+
+  lifecycle {
+    ignore_changes = [
+      user_data,
+      ssh_keys,
+    ]
+  }
 }
 
 resource "digitalocean_record" "hazelcast_subdomain" {
@@ -44,13 +51,13 @@ resource "digitalocean_firewall" "hazelcast_fw" {
   # Salida: permitir todo para facilitar updates y pulls
   outbound_rule {
     protocol              = "tcp"
-    port_range            = "0"
+    port_range            = "all"
     destination_addresses = ["0.0.0.0/0", "::/0"]
   }
 
   outbound_rule {
     protocol              = "udp"
-    port_range            = "0"
+    port_range            = "all"
     destination_addresses = ["0.0.0.0/0", "::/0"]
   }
 }

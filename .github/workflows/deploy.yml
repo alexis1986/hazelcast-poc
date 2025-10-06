@@ -50,17 +50,22 @@ jobs:
         run: |
           DROPLET_IP="${{ steps.output.outputs.droplet_ip }}"
           mkdir -p ~/.ssh
-          ssh-keyscan -H "$DROPLET_IP" >> ~/.ssh/known_hosts
+          # Prefer avoiding host key strict checks in CI to prevent failures on droplet reprovisioning
+          echo -e "Host $DROPLET_IP\n  StrictHostKeyChecking no\n  UserKnownHostsFile=/dev/null\n" >> ~/.ssh/config
 
       - name: Prepare remote directory
         run: |
           DROPLET_IP="${{ steps.output.outputs.droplet_ip }}"
-          ssh -o StrictHostKeyChecking=yes root@"$DROPLET_IP" "mkdir -p /opt/hazelcast-poc"
+          # wait until SSH accepts connections
+          for i in {1..30}; do
+            if ssh -o BatchMode=yes -o ConnectTimeout=5 root@"$DROPLET_IP" "echo ok" >/dev/null 2>&1; then
+              echo "SSH is ready"; break; fi; echo "waiting ssh..."; sleep 5; done
+          ssh root@"$DROPLET_IP" "mkdir -p /opt/hazelcast-poc"
 
       - name: Upload project to droplet (rsync)
         run: |
           DROPLET_IP="${{ steps.output.outputs.droplet_ip }}"
-          rsync -az --delete \
+          rsync -az --delete -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
             --exclude='.git' \
             --exclude='.github' \
             --exclude='**/.git' \
