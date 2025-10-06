@@ -15,7 +15,7 @@ const config: AppConfig = {
         contactsEndpoint: (import.meta.env.VITE_API_CONTACTS_ENDPOINT || 'contacts').replace(/^\//, ''),
     },
     app: {
-        name: import.meta.env.VITE_APP_NAME || 'Portafolio de Contactos',
+        name: import.meta.env.VITE_APP_NAME || 'Portal de Contactos',
         snackbarDuration: parseInt(import.meta.env.VITE_SNACKBAR_DURATION || '6000', 10),
     },
 };
