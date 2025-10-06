@@ -11,8 +11,8 @@ interface AppConfig {
 
 const config: AppConfig = {
     api: {
-        baseUrl: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080',
-        contactsEndpoint: import.meta.env.VITE_API_CONTACTS_ENDPOINT || '/api/contacts',
+        baseUrl: import.meta.env.VITE_API_BASE_URL || '/api',
+        contactsEndpoint: (import.meta.env.VITE_API_CONTACTS_ENDPOINT || 'contacts').replace(/^\//, ''),
     },
     app: {
         name: import.meta.env.VITE_APP_NAME || 'Portafolio de Contactos',
@@ -21,7 +21,9 @@ const config: AppConfig = {
 };
 
 export const getContactsApiUrl = (): string => {
-    return `${config.api.baseUrl}${config.api.contactsEndpoint}`;
+    const base = config.api.baseUrl.replace(/\/$/, '');
+    const ep = config.api.contactsEndpoint.replace(/^\//, '');
+    return `${base}/${ep}`;
 };
 
 export default config;
