@@ -11,6 +11,8 @@ permissions:
 jobs:
   deploy:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    environment:
+      name: production
     runs-on: ubuntu-latest
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}

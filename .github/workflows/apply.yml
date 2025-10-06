@@ -9,6 +9,8 @@ permissions:
 
 jobs:
   terraform-apply:
+    environment:
+      name: infrastructure
     runs-on: ubuntu-latest
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
