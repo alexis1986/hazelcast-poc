@@ -91,7 +91,7 @@ jobs:
       - name: Upload .env to droplet
         run: |
           DROPLET_IP="${{ steps.output.outputs.droplet_ip }}"
-          scp -o StrictHostKeyChecking=yes dist.env root@"$DROPLET_IP":/opt/hazelcast-poc/.env
+          scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null dist.env root@"$DROPLET_IP":/opt/hazelcast-poc/.env
 
       - name: Docker Compose Up (build on droplet)
         run: |
