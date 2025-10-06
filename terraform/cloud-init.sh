@@ -62,4 +62,21 @@ if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>
   docker compose version || echo "[cloud-init] Docker Compose (repo oficial) no se instaló correctamente"
 fi
 
+if ! swapon --show | grep -q "/swapfile"; then
+  echo "[cloud-init] Configurando swapfile de 2G"
+  if [ ! -f /swapfile ]; then
+    fallocate -l 2G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048
+    chmod 600 /swapfile
+    mkswap /swapfile || true
+  fi
+  swapon /swapfile || true
+  if ! grep -q "^/swapfile" /etc/fstab; then
+    echo "/swapfile none swap sw 0 0" >> /etc/fstab
+  fi
+  sysctl -w vm.swappiness=10 || true
+  if ! grep -q "^vm.swappiness" /etc/sysctl.conf; then
+    echo "vm.swappiness=10" >> /etc/sysctl.conf
+  fi
+fi
+
 echo "[cloud-init] setup terminado" | tee -a /var/log/cloud-init-done.flag >/dev/null 2>&1 || true
