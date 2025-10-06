@@ -1,0 +1,192 @@
+name: Deploy App (post-apply)
+
+on:
+  workflow_run:
+    workflows: ["Terraform Apply"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    environment:
+      name: production
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_ACCESS_KEY }}
+      
+      TF_VAR_do_token: ${{ secrets.DO_TOKEN }}
+      TF_VAR_ssh_key_id: ${{ secrets.TF_VAR_ssh_key_id }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      - name: Terraform Init (read outputs)
+        working-directory: ./terraform
+        run: |
+          terraform init -input=false
+
+      - name: Export droplet IP
+        id: output
+        working-directory: ./terraform
+        run: |
+          echo "droplet_ip=$(terraform output -raw droplet_ip)" >> $GITHUB_OUTPUT
+          echo "site_fqdn=$(terraform output -raw site_fqdn)" >> $GITHUB_OUTPUT
+
+      - name: Set up SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Add droplet to known_hosts
+        run: |
+          DROPLET_IP="${{ steps.output.outputs.droplet_ip }}"
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "$DROPLET_IP" >> ~/.ssh/known_hosts
+
+      - name: Prepare remote directory
+        run: |
+          DROPLET_IP="${{ steps.output.outputs.droplet_ip }}"
+          ssh -o StrictHostKeyChecking=yes root@"$DROPLET_IP" "mkdir -p /opt/hazelcast-poc"
+
+      - name: Upload project to droplet (rsync)
+        run: |
+          DROPLET_IP="${{ steps.output.outputs.droplet_ip }}"
+          rsync -az --delete \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='**/.git' \
+            ./ root@"$DROPLET_IP":/opt/hazelcast-poc/
+
+      - name: Create .env locally
+        env:
+          MARIADB_ROOT_PASSWORD: ${{ secrets.MARIADB_ROOT_PASSWORD }}
+          MARIADB_DATABASE: ${{ secrets.MARIADB_DATABASE }}
+          MARIADB_USER: ${{ secrets.MARIADB_USER }}
+          MARIADB_PASSWORD: ${{ secrets.MARIADB_PASSWORD }}
+          APP_PORT: ${{ secrets.APP_PORT }}
+        run: |
+          {
+            echo "MARIADB_ROOT_PASSWORD='${MARIADB_ROOT_PASSWORD}'"
+            echo "MARIADB_DATABASE='${MARIADB_DATABASE}'"
+            echo "MARIADB_USER='${MARIADB_USER}'"
+            echo "MARIADB_PASSWORD='${MARIADB_PASSWORD}'"
+            echo "APP_PORT='${APP_PORT:-3000}'"
+          } > dist.env
+
+      - name: Upload .env to droplet
+        run: |
+          DROPLET_IP="${{ steps.output.outputs.droplet_ip }}"
+          scp -o StrictHostKeyChecking=yes dist.env root@"$DROPLET_IP":/opt/hazelcast-poc/.env
+
+      - name: Docker Compose Up (build on droplet)
+        run: |
+          DROPLET_IP="${{ steps.output.outputs.droplet_ip }}"
+          ssh root@"$DROPLET_IP" bash -lc '
+            set -euo pipefail
+            export DOCKER_BUILDKIT=1
+            export COMPOSE_DOCKER_CLI_BUILD=1
+            cd /opt/hazelcast-poc
+            
+            HOST="${{ steps.output.outputs.site_fqdn }}"
+            if [ -f .env ]; then
+              grep -q '^SERVER_NAME=' .env && sed -i "s/^SERVER_NAME=.*/SERVER_NAME=$HOST/" .env || echo "SERVER_NAME=$HOST" >> .env
+              grep -q '^ENABLE_SSL=' .env && sed -i "s/^ENABLE_SSL=.*/ENABLE_SSL=true/" .env || echo "ENABLE_SSL=true" >> .env
+              grep -q '^HTTPS_PORT=' .env && sed -i "s/^HTTPS_PORT=.*/HTTPS_PORT=443/" .env || echo "HTTPS_PORT=443" >> .env
+            else
+              printf "SERVER_NAME=%s\nENABLE_SSL=true\nHTTPS_PORT=443\n" "$HOST" > .env
+            fi
+            
+            docker compose down || true
+            docker compose pull || true
+            docker compose build
+            docker compose up -d
+            docker compose ps
+          '
+
+      - name: Health check (web)
+        env:
+          APP_PORT: ${{ secrets.APP_PORT }}
+        run: |
+          HOST="${{ steps.output.outputs.site_fqdn }}"
+          PORT="${APP_PORT:-3000}"
+          echo "Waiting for DNS to resolve $HOST ..."
+          for i in {1..30}; do
+            if getent hosts "$HOST" >/dev/null 2>&1; then
+              echo "$HOST resolved"; break; fi; sleep 5; done
+          echo "Checking http://$HOST:$PORT ..."
+          for i in {1..30}; do
+            if curl -fsS "http://$HOST:$PORT" >/dev/null; then
+              echo "App is healthy"; exit 0;
+            fi
+            sleep 5
+          done
+          echo "Health check failed"; exit 1
+
+      - name: Health check (api via Nginx)
+        env:
+          APP_PORT: ${{ secrets.APP_PORT }}
+        run: |
+          HOST="${{ steps.output.outputs.site_fqdn }}"
+          PORT="${APP_PORT:-3000}"
+          echo "Checking API through Nginx at http://$HOST:$PORT/api/actuator/health ..."
+          for i in {1..30}; do
+            if curl -fsS "http://$HOST:$PORT/api/actuator/health" | grep -q '"status"\s*:\s*"UP"'; then
+              echo "API is healthy"; exit 0;
+            fi
+            sleep 5
+          done
+          echo "API health check failed"; exit 1
+
+      - name: Issue/Renew TLS certificate (Let\'s Encrypt)
+        env:
+          CERTBOT_EMAIL: ${{ secrets.CERTBOT_EMAIL }}
+        run: |
+          HOST="${{ steps.output.outputs.site_fqdn }}"
+          DROPLET_IP="${{ steps.output.outputs.droplet_ip }}"
+          ssh root@"$DROPLET_IP" bash -lc '
+            set -euo pipefail
+            cd /opt/hazelcast-poc
+            # Obtener/renovar certificado usando webroot
+            docker compose run --rm certbot certonly --webroot -w /var/www/certbot \
+              -d '"$HOST"' --email '"${CERTBOT_EMAIL}"' --agree-tos --no-eff-email || true
+            # Recargar Nginx para tomar certificados y forzar redirect 80->443
+            docker compose restart web
+          '
+
+      - name: Health check (HTTPS)
+        run: |
+          HOST="${{ steps.output.outputs.site_fqdn }}"
+          echo "Checking https://$HOST ..."
+          for i in {1..30}; do
+            if curl -fsS "https://$HOST" -k >/dev/null; then
+              echo "HTTPS is healthy"; exit 0;
+            fi
+            sleep 5
+          done
+          echo "HTTPS health check failed"; exit 1
+
+      - name: Cleanup Docker cache (optional)
+        env:
+          PRUNE_AFTER_DEPLOY: ${{ vars.PRUNE_AFTER_DEPLOY }}
+        run: |
+          DROPLET_IP="${{ steps.output.outputs.droplet_ip }}"
+          ssh root@"$DROPLET_IP" bash -lc '
+            set -euo pipefail
+            if [ "${PRUNE_AFTER_DEPLOY:-true}" = "true" ]; then
+              echo "Pruning dangling images and build cache..."
+              docker image prune -af || true
+              docker builder prune -af || true
+              docker system df || true
+            else
+              echo "Skipping prune (PRUNE_AFTER_DEPLOY=false)"
+            fi
+          '

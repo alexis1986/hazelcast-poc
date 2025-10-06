@@ -11,8 +11,6 @@ services:
       MARIADB_DATABASE: ${MARIADB_DATABASE}
       MARIADB_USER: ${MARIADB_USER}
       MARIADB_PASSWORD: ${MARIADB_PASSWORD}
-    ports:
-      - "${DB_PORT:-3306}:3306"
     networks:
       - app-net
     volumes:
@@ -38,6 +36,12 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mariadb://db:3306/${MARIADB_DATABASE}
       SPRING_DATASOURCE_USERNAME: ${MARIADB_USER}
       SPRING_DATASOURCE_PASSWORD: ${MARIADB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     restart: always
 
   web:
@@ -45,13 +49,34 @@ services:
     build:
       context: ./web
     image: alexdevvv/hazelcast-poc-web:latest
+    environment:
+      SERVER_NAME: ${SERVER_NAME:-localhost}
+      ENABLE_SSL: ${ENABLE_SSL:-false}
     ports:
       - "${APP_PORT:-3000}:80"
+      - "${HTTPS_PORT:-3443}:443"
     networks:
       - app-net
     depends_on:
-      - api 
+      api:
+        condition: service_healthy
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
     restart: always
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: hazelcast-poc-certbot
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
+    entrypoint: ["/bin/sh", "-c"]
+    command: "sleep infinity"
+    networks:
+      - app-net
 
 volumes:
   db-data:
+  certbot-etc:
+  certbot-webroot:
