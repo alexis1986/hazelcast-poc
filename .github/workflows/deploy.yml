@@ -57,10 +57,16 @@ jobs:
       - name: Prepare remote directory
         run: |
           DROPLET_IP="${{ steps.output.outputs.droplet_ip }}"
-          # wait until SSH accepts connections
+          
           for i in {1..30}; do
             if ssh -o BatchMode=yes -o ConnectTimeout=5 root@"$DROPLET_IP" "echo ok" >/dev/null 2>&1; then
               echo "SSH is ready"; break; fi; echo "waiting ssh..."; sleep 5; done
+          
+          ssh root@"$DROPLET_IP" bash -lc '
+            for i in {1..60}; do
+              if [ -f /var/log/cloud-init-done.flag ]; then echo "cloud-init done"; break; fi; echo "waiting cloud-init..."; sleep 5;
+            done
+          '
           ssh root@"$DROPLET_IP" "mkdir -p /opt/hazelcast-poc"
 
       - name: Upload project to droplet (rsync)
@@ -101,7 +107,19 @@ jobs:
             export DOCKER_BUILDKIT=1
             export COMPOSE_DOCKER_CLI_BUILD=1
             cd /opt/hazelcast-poc
+
+            if ! command -v docker >/dev/null 2>&1; then
+              echo "Installing docker (fallback)"
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update -y || true
+              apt-get install -y --no-install-recommends docker.io docker-compose-plugin || true
+            fi
+            systemctl enable docker || true
+            systemctl start docker || true
             
+            for i in {1..30}; do
+              if docker info >/dev/null 2>&1; then echo "Docker is ready"; break; fi; echo "waiting docker..."; sleep 2; done
+
             HOST="${{ steps.output.outputs.site_fqdn }}"
             if [ -f .env ]; then
               grep -q '^SERVER_NAME=' .env && sed -i "s/^SERVER_NAME=.*/SERVER_NAME=$HOST/" .env || echo "SERVER_NAME=$HOST" >> .env
@@ -110,7 +128,7 @@ jobs:
             else
               printf "SERVER_NAME=%s\nENABLE_SSL=true\nHTTPS_PORT=443\n" "$HOST" > .env
             fi
-            
+
             docker compose down || true
             docker compose pull || true
             docker compose build
