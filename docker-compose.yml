@@ -53,13 +53,13 @@ services:
       SERVER_NAME: ${SERVER_NAME:-localhost}
       ENABLE_SSL: ${ENABLE_SSL:-false}
     ports:
-      - "${APP_PORT:-3000}:80"
-      - "${HTTPS_PORT:-3443}:443"
+      - "3000:80"
+      - "3443:443"
     networks:
       - app-net
     depends_on:
       api:
-        condition: service_healthy
+        condition: service_started
     volumes:
       - certbot-etc:/etc/letsencrypt
       - certbot-webroot:/var/www/certbot
