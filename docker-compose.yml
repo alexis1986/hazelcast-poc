@@ -49,14 +49,34 @@ services:
     build:
       context: ./web
     image: alexdevvv/hazelcast-poc-web:latest
+    environment:
+      SERVER_NAME: ${SERVER_NAME:-localhost}
+      ENABLE_SSL: ${ENABLE_SSL:-false}
     ports:
       - "${APP_PORT:-3000}:80"
+      - "${HTTPS_PORT:-3443}:443"
     networks:
       - app-net
     depends_on:
       api:
         condition: service_healthy
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
     restart: always
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: hazelcast-poc-certbot
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
+    entrypoint: ["/bin/sh", "-c"]
+    command: "sleep infinity"
+    networks:
+      - app-net
 
 volumes:
   db-data:
+  certbot-etc:
+  certbot-webroot:
