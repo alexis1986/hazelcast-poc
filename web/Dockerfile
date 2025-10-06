@@ -3,13 +3,10 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 COPY package*.json ./
-
-RUN npm install
-
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 COPY . .
 
-# Inject Vite env vars at build time (since .env is not included in Docker context)
 ENV VITE_API_BASE_URL=/api \
     VITE_API_CONTACTS_ENDPOINT=/contacts \
     VITE_APP_NAME="Portafolio de Contactos" \
@@ -21,6 +18,12 @@ FROM nginx:alpine
 
 RUN echo "server { \
     listen 80; \
+    \
+    gzip on; \
+    gzip_comp_level 6; \
+    gzip_min_length 1024; \
+    gzip_types text/plain text/css application/javascript application/json image/svg+xml application/xml+rss application/vnd.ms-fontobject application/x-font-ttf font/opentype; \
+    gzip_vary on; \
     \
     location / { \
         root /usr/share/nginx/html; \
