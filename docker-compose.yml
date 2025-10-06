@@ -53,8 +53,8 @@ services:
       SERVER_NAME: ${SERVER_NAME:-localhost}
       ENABLE_SSL: ${ENABLE_SSL:-false}
     ports:
-      - "3000:80"
-      - "3443:443"
+      - "80:80"
+      - "443:443"
     networks:
       - app-net
     depends_on:
