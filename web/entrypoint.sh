@@ -49,6 +49,15 @@ fi
     return 308 /api/;
   }
 
+  location ^~ /api/actuator/ {
+    proxy_pass http://api:8080/actuator/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+
   location /api/ {
     proxy_pass http://api:8080/api/;
     proxy_http_version 1.1;
