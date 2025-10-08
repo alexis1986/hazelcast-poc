@@ -55,24 +55,14 @@ fi
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-  }
-
   location /api/ {
     proxy_pass http://api:8080/api/;
     proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
   }
-HTTPBLOCK
-  fi
-  echo "}";
-
-  if [ "$ENABLE_SSL" = "true" ] && [ "$has_certs" = "true" ]; then
-    cat <<SSLBLOCK
-server {
   listen 443 ssl http2;
   server_name ${SERVER_NAME};
 
@@ -88,7 +78,7 @@ server {
   location / {
     root ${HTML_ROOT};
     index index.html;
-    try_files $uri $uri/ /index.html;
+    try_files \$uri \$uri/ /index.html;
   }
 
   # Redirect /api to /api/
