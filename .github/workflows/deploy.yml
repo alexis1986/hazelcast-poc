@@ -192,7 +192,10 @@ jobs:
           HOST="${{ steps.output.outputs.site_fqdn }}"
           echo "Checking API through Nginx at http://$HOST/api/actuator/health ..."
           for i in {1..60}; do
-            if curl -fsS "http://$HOST/api/actuator/health" | grep -q '"status"\s*:\s*"UP"'; then
+            code=$(curl -sS -o /dev/null -L -k -w "%{http_code}" "http://$HOST/api/actuator/health" || echo 000)
+            echo "HTTP status (api): $code"
+            body=$(curl -sS -L -k "http://$HOST/api/actuator/health" || true)
+            if echo "$body" | grep -q '"status"\s*:\s*"UP"'; then
               echo "API is healthy"; exit 0;
             fi
             sleep 5
