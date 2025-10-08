@@ -19,10 +19,12 @@ RUN npm run build
 FROM nginx:alpine
 
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
 COPY --from=build /app/build /usr/share/nginx/html
 
 EXPOSE 80 443
 
-ENTRYPOINT ["/entrypoint.sh"]
+
+ENTRYPOINT ["/bin/sh", "/entrypoint.sh"]

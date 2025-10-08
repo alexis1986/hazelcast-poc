@@ -44,8 +44,13 @@ fi
     try_files $uri $uri/ /index.html;
   }
 
-  location /api {
-    proxy_pass http://api:8080;
+  # Redirect /api to /api/
+  location = /api {
+    return 308 /api/;
+  }
+
+  location /api/ {
+    proxy_pass http://api:8080/api/;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
@@ -77,8 +82,13 @@ server {
     try_files $uri $uri/ /index.html;
   }
 
-  location /api {
-    proxy_pass http://api:8080;
+  # Redirect /api to /api/
+  location = /api {
+    return 308 /api/;
+  }
+
+  location /api/ {
+    proxy_pass http://api:8080/;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
