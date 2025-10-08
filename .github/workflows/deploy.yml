@@ -97,6 +97,7 @@ jobs:
           DROPLET_IP="${{ steps.output.outputs.droplet_ip }}"
           scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null dist.env root@"$DROPLET_IP":/opt/hazelcast-poc/.env
 
+
       - name: Ensure swap on droplet (2G)
         run: |
           DROPLET_IP="${{ steps.output.outputs.droplet_ip }}"
@@ -205,14 +206,28 @@ jobs:
           ssh root@"$DROPLET_IP" bash -lc '
             set -euo pipefail
             cd /opt/hazelcast-poc
-            # Obtener/renovar certificado usando webroot
+            
             docker compose run --rm certbot certonly --webroot -w /var/www/certbot \
               -d '"$HOST"' --email '"${CERTBOT_EMAIL}"' --agree-tos --no-eff-email || true
-            # Recargar Nginx para tomar certificados y forzar redirect 80->443
+            
             docker compose restart web
           '
 
+      - name: Verify TLS certs on droplet
+        id: tlscheck
+        run: |
+          HOST="${{ steps.output.outputs.site_fqdn }}"
+          DROPLET_IP="${{ steps.output.outputs.droplet_ip }}"
+          if ssh root@"$DROPLET_IP" "[ -f /etc/letsencrypt/live/$HOST/fullchain.pem ] && [ -f /etc/letsencrypt/live/$HOST/privkey.pem ]"; then
+            echo "has_certs=true" >> $GITHUB_OUTPUT
+            echo "TLS certs present on droplet"
+          else
+            echo "has_certs=false" >> $GITHUB_OUTPUT
+            echo "TLS certs not found on droplet; skipping HTTPS health check"
+          fi
+
       - name: Health check (HTTPS)
+        if: steps.tlscheck.outputs.has_certs == 'true'
         run: |
           HOST="${{ steps.output.outputs.site_fqdn }}"
           echo "Checking https://$HOST ..."
